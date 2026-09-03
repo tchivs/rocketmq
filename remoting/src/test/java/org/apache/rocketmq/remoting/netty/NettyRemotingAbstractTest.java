@@ -16,7 +16,16 @@
  */
 package org.apache.rocketmq.remoting.netty;
 
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.DefaultChannelPromise;
+import io.netty.channel.local.LocalAddress;
+import io.netty.util.concurrent.ImmediateEventExecutor;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.rocketmq.remoting.InvokeCallback;
 import org.apache.rocketmq.remoting.common.SemaphoreReleaseOnlyOnce;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -167,5 +176,69 @@ public class NettyRemotingAbstractTest {
         // Acquire the release permit after call back
         semaphore.acquire(1);
         assertThat(semaphore.availablePermits()).isEqualTo(0);
+    }
+
+    /**
+     * When {@code writeAndFlush} fails, the netty-side {@code f.cause()} must reach the caller.
+     *
+     * <p>Regression for a real incident: direct memory was exhausted, so netty could not allocate
+     * an arena chunk and threw {@code OutOfMemoryError}. Because {@code requestFail} never
+     * recorded a cause, the caller only saw a {@code RemotingSendRequestException} with a null
+     * cause, and the accompanying {@code log.warn} did not pass the throwable either. The only
+     * information that explained the failure was discarded, so the outage looked like "send
+     * failures plus a reconnect storm" and pointed nowhere near memory.
+     */
+    @Test
+    public void testWriteFailurePropagatesNettyCauseToCaller() throws InterruptedException {
+        final Throwable writeFailure =
+                new OutOfMemoryError("Cannot reserve 16777216 bytes of direct buffer memory");
+        Channel channel = new MockChannel() {
+            @Override
+            public ChannelFuture writeAndFlush(Object msg) {
+                // An already-failed promise on the immediate executor: addListener notifies
+                // synchronously, exercising the same code path as production.
+                DefaultChannelPromise promise =
+                        new DefaultChannelPromise(this, ImmediateEventExecutor.INSTANCE);
+                promise.setFailure(writeFailure);
+                return promise;
+            }
+
+            @Override
+            public LocalAddress remoteAddress() {
+                return new LocalAddress("write-failure-test");
+            }
+        };
+
+        final Semaphore semaphore = new Semaphore(0);
+        final AtomicReference<Throwable> observed = new AtomicReference<>();
+        remotingAbstract.invokeAsyncImpl(channel, RemotingCommand.createRequestCommand(1, null), 3000,
+                new InvokeCallback() {
+                    @Override
+                    public void operationComplete(ResponseFuture responseFuture) {
+
+                    }
+
+                    @Override
+                    public void operationSucceed(RemotingCommand response) {
+
+                    }
+
+                    @Override
+                    public void operationFail(Throwable throwable) {
+                        observed.set(throwable);
+                        semaphore.release();
+                    }
+                });
+
+        assertThat(semaphore.tryAcquire(1, 10, TimeUnit.SECONDS)).isTrue();
+        assertThat(causeChainOf(observed.get())).contains(writeFailure);
+    }
+
+    private static List<Throwable> causeChainOf(Throwable throwable) {
+        List<Throwable> chain = new ArrayList<>();
+        for (Throwable t = throwable; t != null && !chain.contains(t); t = t.getCause()) {
+            chain.add(t);
+        }
+        return chain;
     }
 }

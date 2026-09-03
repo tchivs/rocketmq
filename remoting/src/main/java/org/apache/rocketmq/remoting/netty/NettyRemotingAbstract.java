@@ -23,6 +23,7 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.concurrent.Future;
 import io.opentelemetry.api.common.AttributesBuilder;
+import java.nio.channels.ClosedChannelException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -559,8 +560,8 @@ public abstract class NettyRemotingAbstract {
                         responseFuture.setSendRequestOK(true);
                         return;
                     }
-                    requestFail(opaque);
-                    log.warn("send a request command to channel <{}>, channelId={}, failed.", RemotingHelper.parseChannelRemoteAddr(channel), channel.id());
+                    requestFail(opaque, f.cause());
+                    log.warn("send a request command to channel <{}>, channelId={}, failed.", RemotingHelper.parseChannelRemoteAddr(channel), channel.id(), f.cause());
                 });
                 return future;
             } catch (Exception e) {
@@ -606,10 +607,15 @@ public abstract class NettyRemotingAbstract {
             });
     }
 
-    private void requestFail(final int opaque) {
+    private void requestFail(final int opaque, final Throwable cause) {
         ResponseFuture responseFuture = responseTable.remove(opaque);
         if (responseFuture != null) {
             responseFuture.setSendRequestOK(false);
+            // Record the cause before waking any waiter: putResponse releases the latch that
+            // blocks the synchronous path, and ResponseFuture#executeInvokeCallback builds the
+            // RemotingSendRequestException from getCause(). Setting it late, or not at all,
+            // hands the caller an exception with no cause.
+            responseFuture.setCause(cause);
             responseFuture.putResponse(null);
             try {
                 executeInvokeCallback(responseFuture);
@@ -631,7 +637,9 @@ public abstract class NettyRemotingAbstract {
             if (entry.getValue().getChannel() == channel) {
                 Integer opaque = entry.getKey();
                 if (opaque != null) {
-                    requestFail(opaque);
+                    // Reached from the close() handler, so the channel really is closed:
+                    // that is the actual cause of the in-flight request failing.
+                    requestFail(opaque, new ClosedChannelException());
                 }
             }
         }
@@ -647,12 +655,12 @@ public abstract class NettyRemotingAbstract {
                 channel.writeAndFlush(request).addListener((ChannelFutureListener) f -> {
                     once.release();
                     if (!f.isSuccess()) {
-                        log.warn("send a request command to channel <" + channel.remoteAddress() + "> failed.");
+                        log.warn("send a request command to channel <{}> failed.", channel.remoteAddress(), f.cause());
                     }
                 });
             } catch (Exception e) {
                 once.release();
-                log.warn("write send a request command to channel <" + channel.remoteAddress() + "> failed.");
+                log.warn("write send a request command to channel <{}> failed.", channel.remoteAddress(), e);
                 throw new RemotingSendRequestException(RemotingHelper.parseChannelRemoteAddr(channel), e);
             }
         } else {
