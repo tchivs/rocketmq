@@ -26,7 +26,7 @@
     <packaging>jar</packaging>
     <artifactId>rocketmq-remoting</artifactId>
     <!-- Internal patch release: recoverable transactions and preserved Netty write failures. -->
-    <version>5.3.1-recoverable.1</version>
+    <version>5.3.1-recoverable.2</version>
 
     <name>rocketmq-remoting ${project.version}</name>
 
@@ -38,7 +38,7 @@
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>rocketmq-common</artifactId>
-            <version>5.3.1-recoverable.1</version>
+            <version>5.3.1-recoverable.2</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>
