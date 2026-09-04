@@ -305,4 +305,6 @@ public class RequestCode {
     public static final int AUTH_DELETE_ACL = 3008;
     public static final int AUTH_GET_ACL = 3009;
     public static final int AUTH_LIST_ACL = 3010;
+    public static final int RECOVERABLE_TRANSACTION = 3200;
+
 }

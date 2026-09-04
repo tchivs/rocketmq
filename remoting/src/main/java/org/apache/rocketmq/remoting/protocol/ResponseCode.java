@@ -134,4 +134,15 @@ public class ResponseCode extends RemotingSysResponseCode {
     public static final int USER_NOT_EXIST = 3001;
 
     public static final int POLICY_NOT_EXIST = 3002;
+    public static final int RECOVERABLE_TRANSACTION_UNSUPPORTED_VERSION = 3400;
+    public static final int RECOVERABLE_TRANSACTION_INVALID_REQUEST = 3401;
+    public static final int RECOVERABLE_TRANSACTION_OWNERSHIP_CONFLICT = 3402;
+    public static final int RECOVERABLE_TRANSACTION_STALE_OWNER_EPOCH = 3403;
+    public static final int RECOVERABLE_TRANSACTION_STALE_CLAIMANT_EPOCH = 3404;
+    public static final int RECOVERABLE_TRANSACTION_CHECKPOINT_MISMATCH = 3405;
+    public static final int RECOVERABLE_TRANSACTION_DECISION_CONFLICT = 3406;
+    public static final int RECOVERABLE_TRANSACTION_HANDLE_COLLISION = 3407;
+    public static final int RECOVERABLE_TRANSACTION_NOT_FOUND = 3408;
+    public static final int RECOVERABLE_TRANSACTION_STORAGE_ERROR = 3409;
+
 }

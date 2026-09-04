@@ -87,6 +87,7 @@ import org.apache.rocketmq.broker.processor.ClientManageProcessor;
 import org.apache.rocketmq.broker.processor.ConsumerManageProcessor;
 import org.apache.rocketmq.broker.processor.EndTransactionProcessor;
 import org.apache.rocketmq.broker.processor.NotificationProcessor;
+import org.apache.rocketmq.broker.processor.RecoverableTransactionProcessor;
 import org.apache.rocketmq.broker.processor.PeekMessageProcessor;
 import org.apache.rocketmq.broker.processor.PollingInfoProcessor;
 import org.apache.rocketmq.broker.processor.PopInflightMessageCounter;
@@ -110,6 +111,7 @@ import org.apache.rocketmq.broker.topic.TopicQueueMappingCleanService;
 import org.apache.rocketmq.broker.topic.TopicQueueMappingManager;
 import org.apache.rocketmq.broker.topic.TopicRouteInfoManager;
 import org.apache.rocketmq.broker.transaction.AbstractTransactionalMessageCheckListener;
+import org.apache.rocketmq.broker.transaction.RecoverableTransactionOutcomeStore;
 import org.apache.rocketmq.broker.transaction.TransactionMetricsFlushService;
 import org.apache.rocketmq.broker.transaction.TransactionalMessageCheckService;
 import org.apache.rocketmq.broker.transaction.TransactionalMessageService;
@@ -212,6 +214,7 @@ public class BrokerController {
     protected final Broker2Client broker2Client;
     protected final ConsumerIdsChangeListener consumerIdsChangeListener;
     protected final EndTransactionProcessor endTransactionProcessor;
+    protected final RecoverableTransactionProcessor recoverableTransactionProcessor;
     private final RebalanceLockManager rebalanceLockManager = new RebalanceLockManager();
     private final TopicRouteInfoManager topicRouteInfoManager;
     protected BrokerOuterAPI brokerOuterAPI;
@@ -266,6 +269,7 @@ public class BrokerController {
     protected FileWatchService fileWatchService;
     protected TransactionalMessageCheckService transactionalMessageCheckService;
     protected TransactionalMessageService transactionalMessageService;
+    protected RecoverableTransactionOutcomeStore recoverableTransactionOutcomeStore;
     protected AbstractTransactionalMessageCheckListener transactionalMessageCheckListener;
     protected Map<Class, AccessValidator> accessValidatorMap = new HashMap<>();
     protected volatile boolean shutdown = false;
@@ -377,6 +381,7 @@ public class BrokerController {
         this.clientManageProcessor = new ClientManageProcessor(this);
         this.slaveSynchronize = new SlaveSynchronize(this);
         this.endTransactionProcessor = new EndTransactionProcessor(this);
+        this.recoverableTransactionProcessor = new RecoverableTransactionProcessor(this);
 
         this.sendThreadPoolQueue = new LinkedBlockingQueue<>(this.brokerConfig.getSendThreadPoolQueueCapacity());
         this.putThreadPoolQueue = new LinkedBlockingQueue<>(this.brokerConfig.getPutThreadPoolQueueCapacity());
@@ -807,6 +812,8 @@ public class BrokerController {
                 messageStoreConfig, brokerStatsManager, messageArrivingListener, brokerConfig, configuration);
             this.messageStore = MessageStoreFactory.build(context, defaultMessageStore);
             this.messageStore.getDispatcherList().addFirst(new CommitLogDispatcherCalcBitMap(this.brokerConfig, this.consumerFilterManager));
+            this.recoverableTransactionOutcomeStore = new RecoverableTransactionOutcomeStore(this);
+            this.messageStore.addDispatcher(this.recoverableTransactionOutcomeStore);
             if (messageStoreConfig.isTimerWheelEnable()) {
                 this.timerCheckpoint = new TimerCheckpoint(BrokerPathConfigHelper.getTimerCheckPath(messageStoreConfig.getStorePathRootDir()));
                 TimerMetrics timerMetrics = new TimerMetrics(BrokerPathConfigHelper.getTimerMetricsPath(messageStoreConfig.getStorePathRootDir()));
@@ -848,6 +855,9 @@ public class BrokerController {
         if (messageStore != null) {
             registerMessageStoreHook();
             result = this.messageStore.load();
+        }
+        if (result && this.recoverableTransactionOutcomeStore != null) {
+            this.recoverableTransactionOutcomeStore.recover();
         }
 
         if (messageStoreConfig.isTimerWheelEnable()) {
@@ -1177,6 +1187,10 @@ public class BrokerController {
          */
         this.remotingServer.registerProcessor(RequestCode.END_TRANSACTION, endTransactionProcessor, this.endTransactionExecutor);
         this.fastRemotingServer.registerProcessor(RequestCode.END_TRANSACTION, endTransactionProcessor, this.endTransactionExecutor);
+        this.remotingServer.registerProcessor(RequestCode.RECOVERABLE_TRANSACTION,
+            recoverableTransactionProcessor, this.endTransactionExecutor);
+        this.fastRemotingServer.registerProcessor(RequestCode.RECOVERABLE_TRANSACTION,
+            recoverableTransactionProcessor, this.endTransactionExecutor);
 
         /*
          * Default
@@ -2451,6 +2465,10 @@ public class BrokerController {
 
     public EndTransactionProcessor getEndTransactionProcessor() {
         return endTransactionProcessor;
+    }
+
+    public RecoverableTransactionOutcomeStore getRecoverableTransactionOutcomeStore() {
+        return recoverableTransactionOutcomeStore;
     }
 
     public boolean isScheduleServiceStart() {

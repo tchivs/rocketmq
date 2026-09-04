@@ -130,6 +130,8 @@ import org.apache.rocketmq.remoting.protocol.body.LockBatchRequestBody;
 import org.apache.rocketmq.remoting.protocol.body.LockBatchResponseBody;
 import org.apache.rocketmq.remoting.protocol.body.ProducerConnection;
 import org.apache.rocketmq.remoting.protocol.body.ProducerTableInfo;
+import org.apache.rocketmq.remoting.protocol.body.RecoverableTransactionRequestBody;
+import org.apache.rocketmq.remoting.protocol.body.RecoverableTransactionResponseBody;
 import org.apache.rocketmq.remoting.protocol.body.QueryAssignmentRequestBody;
 import org.apache.rocketmq.remoting.protocol.body.QueryAssignmentResponseBody;
 import org.apache.rocketmq.remoting.protocol.body.QueryConsumeQueueResponseBody;
@@ -1612,6 +1614,27 @@ public class MQClientAPIImpl implements NameServerUpdateCallback, StartAndShutdo
 
         request.setRemark(remark);
         this.remotingClient.invokeOneway(addr, request, timeoutMillis);
+    }
+
+    public RecoverableTransactionResponseBody recoverableTransaction(
+        final String addr,
+        final RecoverableTransactionRequestBody requestBody,
+        final long timeoutMillis
+    ) throws RemotingException, MQBrokerException, InterruptedException {
+        RemotingCommand request = RemotingCommand.createRequestCommand(
+            RequestCode.RECOVERABLE_TRANSACTION, null);
+        request.setBody(requestBody.encode());
+        RemotingCommand response = this.remotingClient.invokeSync(
+            MixAll.brokerVIPChannel(this.clientConfig.isVipChannelEnabled(), addr), request, timeoutMillis);
+        if (response != null && response.getCode() == ResponseCode.SUCCESS) {
+            return RecoverableTransactionResponseBody.decode(
+                response.getBody(), RecoverableTransactionResponseBody.class);
+        }
+        if (response == null) {
+            throw new MQBrokerException(ResponseCode.SYSTEM_ERROR,
+                "recoverable transaction broker returned no response", addr);
+        }
+        throw new MQBrokerException(response.getCode(), response.getRemark(), addr);
     }
 
     public void queryMessage(

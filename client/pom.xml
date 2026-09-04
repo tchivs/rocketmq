@@ -25,6 +25,7 @@
     <modelVersion>4.0.0</modelVersion>
     <packaging>jar</packaging>
     <artifactId>rocketmq-client</artifactId>
+    <version>5.3.1-recoverable.1</version>
     <name>rocketmq-client ${project.version}</name>
 
     <properties>

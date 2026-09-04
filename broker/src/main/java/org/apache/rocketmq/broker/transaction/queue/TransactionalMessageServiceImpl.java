@@ -30,6 +30,8 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.rocketmq.broker.BrokerPathConfigHelper;
 import org.apache.rocketmq.broker.transaction.AbstractTransactionalMessageCheckListener;
+import org.apache.rocketmq.broker.transaction.RecoverableTransactionOutcomeStore.CheckResolution;
+import org.apache.rocketmq.broker.transaction.RecoverableTransactionOutcomeStore.ProtocolException;
 import org.apache.rocketmq.broker.transaction.OperationResult;
 import org.apache.rocketmq.broker.transaction.TransactionMetrics;
 import org.apache.rocketmq.broker.transaction.TransactionalMessageService;
@@ -258,6 +260,28 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                                 }
                             }
                             continue;
+                        }
+
+                        if ("true".equals(msgExt.getProperty(MessageConst.PROPERTY_RECOVERABLE_TRANSACTION))) {
+                            CheckResolution resolution;
+                            try {
+                                resolution = this.transactionalMessageBridge.getBrokerController()
+                                    .getRecoverableTransactionOutcomeStore().resolveCheck(msgExt);
+                            } catch (ProtocolException e) {
+                                log.error("Resolve recoverable transaction check failed, handleId={}",
+                                    msgExt.getProperty(MessageConst.PROPERTY_RECOVERABLE_TRANSACTION_HANDLE), e);
+                                resolution = CheckResolution.PENDING;
+                            }
+                            if (resolution == CheckResolution.PENDING) {
+                                if (!putBackHalfMsgQueue(msgExt, i)) {
+                                    continue;
+                                }
+                            }
+                            if (resolution != CheckResolution.CLASSIC) {
+                                newOffset = i + 1;
+                                i++;
+                                continue;
+                            }
                         }
 
                         if (needDiscard(msgExt, transactionCheckMax) || needSkip(msgExt)) {

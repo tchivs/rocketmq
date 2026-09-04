@@ -25,8 +25,8 @@
     <modelVersion>4.0.0</modelVersion>
     <packaging>jar</packaging>
     <artifactId>rocketmq-remoting</artifactId>
-    <!-- Internal patch release: preserve the Netty write-failure cause for callers and logs. -->
-    <version>5.3.1-hytera.1</version>
+    <!-- Internal patch release: recoverable transactions and preserved Netty write failures. -->
+    <version>5.3.1-recoverable.1</version>
 
     <name>rocketmq-remoting ${project.version}</name>
 
@@ -38,7 +38,7 @@
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>rocketmq-common</artifactId>
-            <version>5.3.1</version>
+            <version>5.3.1-recoverable.1</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>

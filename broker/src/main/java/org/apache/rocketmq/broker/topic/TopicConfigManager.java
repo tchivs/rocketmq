@@ -214,6 +214,15 @@ public class TopicConfigManager extends ConfigManager {
         }
 
         {
+            String topic = TopicValidator.RMQ_SYS_RECOVERABLE_TRANS_OUTCOME_TOPIC;
+            TopicConfig topicConfig = new TopicConfig(topic);
+            TopicValidator.addSystemTopic(topic);
+            topicConfig.setReadQueueNums(1);
+            topicConfig.setWriteQueueNums(1);
+            putTopicConfig(topicConfig);
+        }
+
+        {
             if (this.brokerController.getMessageStoreConfig().isTimerWheelEnable()) {
                 String topic = TimerMessageStore.TIMER_TOPIC;
                 TopicConfig topicConfig = new TopicConfig(topic);
